@@ -10,9 +10,9 @@
 #define KILL_PIN      12  // Start module kill pin
 #define BUZZ          9   // Buzzer 
 #define BUTTON        8   // Start button
-#define EDGE_L        7   // Left edge sensor
-#define EDGE_R        7   // Right edge sensor
-#define EDGE_M        7   // Right edge sensor
+#define EDGE_L        A3   // Left edge sensor
+#define EDGE_R        A3   // Right edge sensor
+#define EDGE_M        A3   // Right edge sensor
 #define OPPONENT_L    A5  // Left opponent sensor
 #define OPPONENT_R    A4  // Right opponent sensor
 #define OPPONENT_FR   A1  // Front right opponent sensor
@@ -20,9 +20,8 @@
 #define OPPONENT_FL   A0  // Front left opponent sensor
 
 //#define DEBUG_ENABLE
-//#define SUMO_INTERFACE
 
-
+int sensorValue = 0;
 
 ////////////////////////////////////
 //////////// SPEED ////////////////
@@ -31,10 +30,10 @@
 #define STRAIGHT_SPEED 150
 #define SEARCH_SPEED_1 50
 #define SEARCH_SPEED_2 100
-#define ROTATE_TANK_SPEED 150
-#define ROTATE_SPEED 100
-#define BRAKEOUT_SPEED 250
-#define ATACK_SPEED 200
+#define ROTATE_TANK_SPEED 100
+#define ROTATE_SPEED 125
+#define BRAKEOUT_SPEED 150
+#define ATACK_SPEED 150
 
 ////////////////////////////////
 
@@ -42,7 +41,7 @@ bool mode = 0;        // Mode 0: For 2S
 // Mode 1: For 3S
 int difference = 0;
 uint32_t myTimer1;
-int attackZone = 0; //0-12
+uint8_t attackZone = 0; //0-12
 
 SharpIR Sharp_R(OPPONENT_FR, model);
 SharpIR Sharp_L(OPPONENT_FL, model);
@@ -125,7 +124,7 @@ void backoff(uint8_t dir) {
   Serial.println("Reverse");
 #endif
 
-  delay(350);
+  delay(100);
 
   // Stop the motors.
   drive(0, 0);
@@ -155,11 +154,11 @@ void backoff(uint8_t dir) {
   uint32_t uTurnTimestamp = millis();
   while (millis() - uTurnTimestamp < 200) {
     // Opponent is detected if either one of the opponent sensor is triggered.
-    if ( digitalRead(OPPONENT_FC) ||
-         statusL() ||
-         statusR() ||
-         !digitalRead(OPPONENT_L) ||
-         !digitalRead(OPPONENT_R) ) {
+    if ( !digitalRead(OPPONENT_FC) ||
+         !statusL() ||
+         !statusR() ||
+         digitalRead(OPPONENT_L) ||
+         digitalRead(OPPONENT_R) ) {
 
       // Stop the motors.
       drive(0, 0);
@@ -285,7 +284,10 @@ void attack() {
  *******************************************************************************/
 void setup() {
 
-#ifdef DEBUG_ENABLE || SUMO_INTERFACE
+#ifdef DEBUG_ENABLE
+  Serial.begin(9600);
+#endif
+#ifdef SUMO_INTERFACE
   Serial.begin(9600);
 #endif
 
@@ -293,8 +295,8 @@ void setup() {
   pinMode(KILL_PIN, INPUT);
 
   pinMode(BUTTON, INPUT_PULLUP);
-  pinMode(EDGE_L, INPUT);
-  pinMode(EDGE_R, INPUT);
+  //pinMode(EDGE_L, INPUT);
+  //pinMode(EDGE_R, INPUT);
 
   pinMode(BIN_1, OUTPUT);
   pinMode(BIN_2, OUTPUT);
@@ -315,10 +317,51 @@ void setup() {
   // Stop the motors.
 
   drive(0, 0);
+#ifdef SUMO_INTERFACE
+  while (true)
+  {
+    sumo_int();
+  }
+#endif
+  /*
+  delay (2000);
+  digitalWrite(LED1, HIGH);
+  delay(500);
+  digitalWrite(LED1, LOW);
+  delay(500);
+  digitalWrite(LED1, HIGH);
+  delay(500);
+  digitalWrite(LED1, LOW);
+  Serial.println("COLIBRATION...");
+
+  while (millis() < 10000) {
+
+    // Grabs incoming data from the photosensor
+    sensorValue = analogRead(EDGE_L);
+    if ( sensorValue > sensorMax) {
+      sensorMax = sensorValue;
+    }
+    if ( sensorValue < sensorMin) {
+      sensorMin = sensorValue;
+    }
+  }
+  Serial.println("COLIBRATION COMPLITE");
+
+  digitalWrite(LED1, HIGH);
+  delay(500);
+  digitalWrite(LED1, LOW);
+  delay(500);
+  */
+#ifdef DEBUG_ENABLE
+  Serial.print(sensorMin);
+  Serial.print(" ");
+  Serial.print(sensorMax);
+  Serial.println(" ");
+#endif
 
   while (!digitalRead(Start_PIN)) {
     // While waiting, show the status of the edge sensor for easy calibration.
-    if (!digitalRead(EDGE_L)) {
+    if (!LineSens()) {
       digitalWrite(LED1, HIGH);
     } else {
       digitalWrite(LED1, LOW);
@@ -358,7 +401,7 @@ void setup() {
     bool FRONT_L_State = statusL();
     bool RIGHT_State = digitalRead(OPPONENT_R);
     bool LEFT_State = digitalRead(OPPONENT_L);
-    bool LINE_State = digitalRead(EDGE_L);
+    bool LINE_State = LineSens();
 
     Serial.print(FRONT_L_State);
     Serial.print(" ");
@@ -372,6 +415,8 @@ void setup() {
     Serial.print(" ");
 
     Serial.print(!LINE_State);
+    Serial.println(" ");
+    Serial.print(sensorValue);
     Serial.println(" ");
 #endif
 
@@ -391,8 +436,10 @@ void setup() {
    Main program loop.
  *******************************************************************************/
 void loop() {
+
+/*
   // Edge is detected on the left.
-  if (digitalRead(EDGE_L)) {
+  if (!LineSens()) {
     // Back off and make a U-Turn to the right.
     backoff(RIGHT);
 
@@ -405,6 +452,7 @@ void loop() {
 
   // Edge is not detected.
   else {
+    */
     // Keep searching if opponent is not detected.
     if ( digitalRead(OPPONENT_FC) &&
          statusL() &&
@@ -425,10 +473,10 @@ void loop() {
       Serial.println("GO to Attack void");
 #endif
     }
-  }
+  
 
   // Stop the robot if the button is pressed.
-  if (!digitalRead(Start_PIN)) {
+  if (!digitalRead(BUTTON)) {
     // Stop the motors.
     drive(0, 0);
 
@@ -443,6 +491,7 @@ void loop() {
       digitalWrite(LED1, LOW);
       delay(1000);
     }
+  
   }
 
 }
@@ -480,7 +529,7 @@ bool statusL()
 {
   bool statusLeft;
   int disL  = Sharp_L.distance();
-  if (disL < 60)
+  if (disL < 40)
   {
     statusLeft = true;
   }
@@ -494,7 +543,7 @@ bool statusR()
 {
   bool statusRight;
   int disR = Sharp_R.distance();
-  if (disR < 60)
+  if (disR < 40)
   {
     statusRight = true;
   }
@@ -524,82 +573,17 @@ void blink(uint8_t num)
     }
   }
 }
-
-
-#ifdef SUMO_INTERFACE
-void sumo_int()
+bool LineSens()
 {
-  bool FRONT_State = digitalRead(OPPONENT_FR);
-  bool FRONT_R_State = statusR();
-  bool FRONT_L_State = statusL();
-  bool RIGHT_State = digitalRead(OPPONENT_R);
-  bool LEFT_State = digitalRead(OPPONENT_L);
-  //////////////////////////////////////////////
-  //////////////////LOGIC//////////////////////
-  ////////////////////////////////////////////
-
-  if ( digitalRead(OPPONENT_FC) &&
-       statusL() &&
-       statusR() &&
-       !digitalRead(OPPONENT_L) &&
-       !digitalRead(OPPONENT_R))
+  bool State = 0;
+  sensorValue = analogRead(EDGE_L);
+  if (sensorValue < 200)
   {
-    attackZone = 0;
+    State = 0;
   }
-  else if (digitalRead(OPPONENT_L))
+  else if (sensorValue > 500)
   {
-    attackZone = 1;
+    State = 1;
   }
-  else if (statusL())
-  {
-    attackZone = 2;
-  }
-  else if (statusR())
-  {
-    attackZone = 5;
-  }
-  else if (digitalRead(OPPONENT_R))
-  {
-    attackZone = 6;
-  }
-  else if (digitalRead(OPPONENT_FC) && statusL())
-  {
-    attackZone = 7;
-  }
-  else if (digitalRead(OPPONENT_FC))
-  {
-    attackZone = 8;
-  }
-  else if (digitalRead(OPPONENT_FC) && statusR())
-  {
-    attackZone = 9;
-  }
-  else if (digitalRead(OPPONENT_FC) && statusL() && statusR())
-  {
-    attackZone = 12;
-  }
-
-
-
-
-
-  ///////////////////////////////////////////
-  Serial.print(0);
-  Serial.print(","); //Seperation mark
-  Serial.print(attackZone);
-  Serial.print(",");  //Seperation mark
-  Serial.print(0);
-  Serial.print(",");  //Seperation mark
-  Serial.print(0);
-  Serial.print(",");  //Seperation mark
-  Serial.print(Sharp_R.distance());
-  Serial.print(",");  //Seperation mark
-  Serial.print(Sharp_L.distance());
-  Serial.print(",");  //Seperation mark
-  Serial.print(0);
-  Serial.print(",");  //Seperation mark
-  Serial.print(0);
-  Serial.print(",");  //Seperation mark
-  Serial.print('>'); //END Mark
+  return State;
 }
-#endif
