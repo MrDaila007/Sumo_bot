@@ -1,5 +1,6 @@
 // Wiring Connections.
 #include <Adafruit_NeoPixel.h>
+#include <EEPROM.h>
 #define PIN 16       // номер порта к которому подключен модуль
 #define NUMPIXELS 1  // Popular NeoPixel ring size
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
@@ -19,7 +20,8 @@ unsigned char dohio;
 #define SenGND 13
 #define IRVCC 14
 
-//#define Back_Start
+#define Back_Start
+#define ENABLE_LINE_SEN
 
 
 //#define DEBUG_ENABLE
@@ -72,31 +74,55 @@ uint8_t searchDir = LEFT;
  *******************************************************************************/
 void startRoutine() {
   // Start delay.
+  uint8_t Rand_time = random(150,240);
 #ifdef Back_Start
 
-    drive(-MAX_SPEED, -MAX_SPEED); // Go Back.
+  drive(-BRAKEOUT_SPEED+5, -BRAKEOUT_SPEED); // Go Back.
+  delay(50);
+  
+  bool rand_DIR = random(0,2);
+  if(rand_DIR)
+  {
+    searchDir = RIGHT;
+    drive(ROTATE_TANK_SPEED, -ROTATE_TANK_SPEED); // Turn round
+    delay(210);
+  }
+  else
+  {
+    searchDir = LEFT;
+    drive(-ROTATE_TANK_SPEED, ROTATE_TANK_SPEED); // Turn round
+    delay(210);
+  }
+
+  drive(STRAIGHT_SPEED, STRAIGHT_SPEED);
+  delay(210);
+
+#else
+
+  drive(STRAIGHT_SPEED, STRAIGHT_SPEED);
   delay(400);
 
-  drive(ROTATE_TANK_SPEED, -ROTATE_TANK_SPEED); // Turn round
-  delay(300);
-
 #endif
-
-
-
-
   // Go straight.
-  drive(STRAIGHT_SPEED, STRAIGHT_SPEED);
 
-  delay(500);
 
   // Turn left until opponent is detected.
-  //drive(-0, ROTATE_TANK_SPEED);
-
+    if(searchDir = RIGHT)
+  {
+    searchDir = RIGHT;
+    drive(ROTATE_TANK_SPEED, -ROTATE_TANK_SPEED); // Turn round
+    delay(210);
+  }
+  else
+  {
+    searchDir = LEFT;
+    drive(-ROTATE_TANK_SPEED, ROTATE_TANK_SPEED); // Turn round
+    delay(210);
+  }
   uint32_t startTimestamp = millis();
   while (!digitalRead(OPPONENT_FC)) {
     // Quit if opponent is not found after timeout.
-    if (millis() - startTimestamp > 200) {
+    if (millis() - startTimestamp > 300) {
       break;
     }
   }
@@ -281,10 +307,23 @@ void attack() {
  *******************************************************************************/
 void setup() {
 
+EEPROM. begin(512);
+unsigned char value;
+int address = 100;
+EEPROM.get(address, value);
+dohio = value;
+
 
 #ifdef DEBUG_ENABLE
   Serial.begin(9600);
 #endif
+
+#ifdef DEBUG_ENABLE
+  Serial.println("Robot has been started!");
+  Serial.print("Dohio = ");
+  Serial.println(dohio);
+#endif
+
 
   pinMode(BIN_1, OUTPUT);
   pinMode(BIN_2, OUTPUT);
@@ -372,9 +411,11 @@ void setup() {
  *******************************************************************************/
 void loop() {
 
-  /*
+  #ifdef ENABLE_LINE_SEN
+  
   // Edge is detected on the left.
-  if (!LineSens()) {
+  if (!LineSens()) 
+  {
     // Back off and make a U-Turn to the right.
     backoff(RIGHT);
 
@@ -382,12 +423,10 @@ void loop() {
     searchDir ^= 1;
   }
 
-  // Edge is detected on the right.
-
-
   // Edge is not detected.
   else {
-    */
+    
+  #endif
   // Keep searching if opponent is not detected.
   if (digitalRead(OPPONENT_FC) && digitalRead(OPPONENT_FL) && digitalRead(OPPONENT_FR)) {
     #ifdef DEBUG_ENABLE
@@ -416,6 +455,9 @@ void loop() {
     }
   }
 }
+#ifdef ENABLE_LINE_SEN
+}
+#endif
 
 void drive(int leftS, int rightS) {
 
@@ -474,6 +516,26 @@ bool chekIReceive() {
   unsigned char command;
   if (rc5.read(&toggle, &address, &command)) {
     if (address == 11) {
+      if(dohio != command)
+      {
+        int address = 100;
+        EEPROM.put(address, command);
+        EEPROM.commit();
+        dohio = command;
+
+        unsigned char value;
+        int addressE = 100;
+        EEPROM.get(addressE, value);
+        if (value != dohio)
+        {
+          Blink(255, 0, 0);
+          #ifdef DEBUG_ENABLE
+            Serial.println("EEPROM write ERR");
+          #endif
+        }
+
+        
+      }
       dohio = command;
       Blink(0, 0, 255);
     }
